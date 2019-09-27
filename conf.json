@@ -1,0 +1,9 @@
+{
+    "ffmpeg": {
+        "ffplay": "F:/grean/ffmpeg/bin/ffplay.exe",
+        "ffprobe": "F:/grean/ffmpeg/bin/ffprobe.exe"
+    },
+    "ws": "ws://localhost:8888/io/?EIO=3\u0026transport=websocket",
+    "cache": "F:/TestProject/golang/mmfm-playback-go/testdata",
+    "web": "http://localhost:8888/song/get"
+}
