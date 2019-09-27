@@ -85,8 +85,7 @@ func (this *CommandBuilder) Process() *os.Process {
 }
 
 func (this *CommandBuilder) Stop() error {
-	if this != nil && this.cmd != nil && this.cmd.Process != nil 
-	&& !this.cmd.ProcessState.Exited()  {
+	if this != nil && this.cmd != nil && this.cmd.Process != nil && !this.cmd.ProcessState.Exited()  {
 		return this.cmd.Process.Kill()
 	}
 	return nil
