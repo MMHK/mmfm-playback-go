@@ -40,6 +40,8 @@ func (this *MusicPlayer) Start() error {
 	}
 	this.playlist = list
 
+	go this.cache.Clean(this.playlist)
+
 	if len(this.playlist) > 0 {
 		song, err := this.GetSongInPlayList(int(this.currentIndex))
 		if err != nil {

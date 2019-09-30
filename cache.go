@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type FileCache struct {
@@ -23,9 +24,42 @@ func (this *FileCache) Flush() error {
 	return os.RemoveAll(filepath.Join(this.basePath, "data"))
 }
 
-func (this *FileCache) Cache(key string) (string) {
+func (this *FileCache) Clean(playlist []*Song) error {
+
+	allcaches, err := filepath.Glob(filepath.Join(this.basePath, "data", "*"))
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	mapHash := []string{};
+	for _, song := range playlist {
+		mapHash = append(mapHash, this.generateKey(song.GetURL()))
+	}
+
+	for _, path := range allcaches {
+		cache := filepath.Base(path)
+
+		for _, hash := range mapHash {
+			if strings.EqualFold(hash, cache) {
+				goto skip
+			}
+		}
+		os.Remove(path)
+		skip:
+	}
+
+
+	return nil
+}
+
+func (this *FileCache) generateKey(key string) string {
 	hash := md5.Sum([]byte(key))
-	hashKey := fmt.Sprintf("%x", hash)
+	return fmt.Sprintf("%x", hash)
+}
+
+func (this *FileCache) Cache(key string) (string) {
+	hashKey := this.generateKey(key)
 
 	path := filepath.Join(this.basePath, "data", hashKey)
 	if _, err := os.Stat(path); err == nil {
