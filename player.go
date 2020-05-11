@@ -6,36 +6,44 @@ import (
 )
 
 type MusicPlayer struct {
-	Conf *PlaybackConfig
-	player *FFPlay
-	probe *FFprobe
-	playlist []*Song
+	Conf         *PlaybackConfig
+	player       *FFPlay
+	probe        *FFprobe
+	playlist     []*Song
 	currentIndex float64
-	chat *ChatClient
-	currentSong *Song
-	cache *FileCache
-	pauseFlag bool
+	chat         *ChatClient
+	currentSong  *Song
+	cache        *FileCache
+	pauseFlag    bool
 }
 
 func NewMusicPlayer(conf *PlaybackConfig) *MusicPlayer {
 
 	return &MusicPlayer{
-		Conf: conf,
-		player: NewFFplay(conf.FFMpegConf.FFPlay),
-		probe: NewFFprobe(conf.FFMpegConf.FFProbe),
-		playlist: make([]*Song, 0),
+		Conf:         conf,
+		player:       NewFFplay(conf.FFMpegConf.FFPlay),
+		probe:        NewFFprobe(conf.FFMpegConf.FFProbe),
+		playlist:     make([]*Song, 0),
 		currentIndex: 0,
-		pauseFlag: true,
-		cache: NewFileCache(conf.CachePath),
-		chat: NewChatClient(conf.WebSocketAPI),
+		pauseFlag:    true,
+		cache:        NewFileCache(conf.CachePath),
+		chat:         NewChatClient(conf.WebSocketAPI),
 	}
 }
 
 func (this *MusicPlayer) Start() error {
 
+	retryCounter := 0
+start:
 	list, err := LoadPlaylist(this.Conf.WebAPI)
+	retryCounter++
 	if err != nil {
 		log.Error(err)
+		if retryCounter < 10 {
+			log.Error("retry connect!")
+			time.Sleep(time.Second * 2)
+			goto start
+		}
 		return err
 	}
 	this.playlist = list
@@ -81,7 +89,7 @@ func (this *MusicPlayer) Listen() error {
 				if ok && index != this.currentIndex {
 					this.currentIndex = index
 				} else {
-					this.currentIndex = 0;
+					this.currentIndex = 0
 				}
 
 				song, err := this.GetSongInPlayList(int(this.currentIndex))
@@ -109,6 +117,7 @@ func (this *MusicPlayer) Listen() error {
 			log.Debug("pause song", this.currentSong.Name)
 			this.pauseFlag = true
 			this.player.Stop()
+			this.FirePause()
 			break
 
 		case EVENT_CURRENT:
@@ -126,7 +135,7 @@ func (this *MusicPlayer) Listen() error {
 			list, err := LoadPlaylist(this.Conf.WebAPI)
 			if err != nil {
 				log.Error(err)
-				return err
+				break
 			}
 			this.playlist = list
 			break
@@ -137,7 +146,7 @@ func (this *MusicPlayer) Listen() error {
 }
 
 func (this *MusicPlayer) GetSongInPlayList(index int) (*Song, error) {
-	if index >=0 && index < len(this.playlist) {
+	if index >= 0 && index < len(this.playlist) {
 		return this.playlist[index], nil
 	}
 
@@ -146,7 +155,7 @@ func (this *MusicPlayer) GetSongInPlayList(index int) (*Song, error) {
 		return this.playlist[0], nil
 	}
 
-	return  nil, errors.New("song not found")
+	return nil, errors.New("song not found")
 }
 
 func (this *MusicPlayer) Play(song *Song, second int) error {
@@ -175,7 +184,7 @@ func (this *MusicPlayer) Play(song *Song, second int) error {
 
 	go func() {
 		<-finish
-		if !this.pauseFlag{
+		if !this.pauseFlag {
 			this.Next()
 		}
 	}()
@@ -183,19 +192,27 @@ func (this *MusicPlayer) Play(song *Song, second int) error {
 	return nil
 }
 
-func (this *MusicPlayer) FirePause()  {
-	if this.chat != nil {
+func (this *MusicPlayer) FirePause() {
+	if this.chat != nil && this.currentSong != nil {
 		this.currentSong.URL = this.currentSong.GetURL()
 		this.chat.SendEvent(CHAT_EVENT_MESSAGE, &MessageArgs{
 			Command: EVENT_PAUSE,
+			Params: []interface{}{
+				this.currentSong,
+				this.currentIndex,
+				this.currentSong.Index,
+				this.currentSong.Duration,
+			},
 		})
 	}
 }
 
 func (this *MusicPlayer) FirePlaying() {
-	if this.chat != nil {
+	if this.chat != nil && this.currentSong != nil {
 		this.currentSong.URL = this.currentSong.GetURL()
-		this.currentSong.Index = this.currentSong.Index + 1
+		if !this.pauseFlag {
+			this.currentSong.Index = this.currentSong.Index + 1
+		}
 		this.chat.SendEvent(CHAT_EVENT_MESSAGE, &MessageArgs{
 			Command: EVENT_PLAYING,
 			Params: []interface{}{
@@ -208,7 +225,7 @@ func (this *MusicPlayer) FirePlaying() {
 	}
 }
 
-func (this *MusicPlayer) TrackPlaying()  {
+func (this *MusicPlayer) TrackPlaying() {
 	for {
 		if !this.pauseFlag {
 			this.FirePlaying()
@@ -219,7 +236,7 @@ func (this *MusicPlayer) TrackPlaying()  {
 
 func (this *MusicPlayer) Next() {
 	index := this.currentIndex + 1
-	if index > float64(len(this.playlist) - 1) {
+	if index > float64(len(this.playlist)-1) {
 		index = 0
 	}
 	this.Play(this.playlist[int(index)], 0)

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/graarh/golang-socketio"
 	"strings"
 
-	"github.com/graarh/golang-socketio"
 	"github.com/graarh/golang-socketio/transport"
 )
 
@@ -119,15 +119,22 @@ func NewChatClient(url string) *ChatClient {
 	}
 }
 
-func (this *ChatClient) Listen() (chan *MessageArgs, error) {
-	client, err := gosocketio.Dial(
+func (this *ChatClient) Connect() error {
+	var err error
+	this.client, err = gosocketio.Dial(
 		this.url,
 		transport.GetDefaultWebsocketTransport())
-
-	this.client = client
-
 	if err != nil {
 		log.Error(err)
+		return err
+	}
+
+	return nil
+}
+
+func (this *ChatClient) Listen() (chan *MessageArgs, error) {
+	err := this.Connect()
+	if err != nil {
 		return nil, err
 	}
 
@@ -145,6 +152,9 @@ func (this *ChatClient) Listen() (chan *MessageArgs, error) {
 
 	err = this.client.On(gosocketio.OnDisconnection, func(h *gosocketio.Channel) {
 		log.Info("Disconnected")
+
+		defer this.client.Close()
+		defer this.Listen()
 	})
 
 	if err != nil {
@@ -182,7 +192,7 @@ func (this *ChatClient) SendEvent(eventName string, params *MessageArgs) error {
 	if this.client == nil {
 		return errors.New("client connection is not ready")
 	}
-	args, err := params.ToJSON();
+	args, err := params.ToJSON()
 	if err != nil {
 		log.Error(err)
 		return err
