@@ -12,32 +12,30 @@ COPY . .
 # Build the Go app
 RUN go version \
  && export GO111MODULE=on \
- && export GOPROXY=https://goproxy.io \
+ && export GOPROXY=https://goproxy.cn,direct \
  && go mod vendor \
- && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o mmfm-go-armv7
+ && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o mmfm-go
 
 ######## Start a new stage from scratch #######
 FROM alpine:latest  
 
-RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64 \
- && chmod +x /usr/local/bin/dumb-init \
- && apk add --update libintl \
- && apk add --virtual build_deps gettext \
- && apk add --no-cache tzdata \
- && cp /usr/bin/envsubst /usr/local/bin/envsubst \
- && apk del build_deps
+RUN apk add --no-cache tzdata dumb-init gettext-envsubst ffmpeg mplayer
 
 WORKDIR /app
 
 # Copy the Pre-built binary file from the previous stage
-COPY --from=builder /app/mmfm-playback-go/mmfm-go-armv7 .
-COPY --from=builder /app/mmfm-playback-go/conf.json ./config.json
+COPY --from=builder /app/mmfm-playback-go/mmfm-go .
+COPY ./config.json ./config.json
 
 ENV TZ=Asia/Hong_Kong \
- SERVICE_NAME=mmfm-go
+ SERVICE_NAME=mmfm-go \
+ FFPLAY_BIN=/usr/bin/ffplay \
+ FFPROBE_BIN=/usr/bin/ffprobe \
+ MPLAYER_BIN=/usr/bin/mplayer \
+ MMFM_HOST=192.168.33.6
 
 
-ENTRYPOINT ["dumb-init", "--"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 CMD envsubst < /app/config.json > /app/temp.json \
- && /app/mmfm-go-armv7 -c /app/temp.json
+ && /app/mmfm-go -c /app/temp.json

@@ -26,8 +26,36 @@ func TestGetMediaInfo(t *testing.T) {
 	t.Log(duration)
 }
 
-func TestPlay(t *testing.T) {
+func TestFFPlayPlay(t *testing.T) {
 	handler := NewFFplay(FFPLAY_BIN)
+	handler.Play(getLocalPath(MEDIA_PATH), 10)
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	done := make(chan bool, 0)
+
+	time.AfterFunc(time.Second*3, func() {
+		t.Log("time after 3s")
+		handler.Stop()
+	})
+
+	time.AfterFunc(time.Second*5, func() {
+		t.Log("time after 5s")
+		handler.Play(getLocalPath(MEDIA_PATH), 20)
+	})
+
+	time.AfterFunc(time.Second*10, func() {
+		t.Log("time after 10s")
+		handler.Stop()
+
+		done <- true
+	})
+
+	<-done
+}
+
+func TestMPlayPlay(t *testing.T) {
+	handler := NewMplayer(MPLAY_BIN)
 	handler.Play(getLocalPath(MEDIA_PATH), 10)
 
 	runtime.GOMAXPROCS(runtime.NumCPU())

@@ -7,7 +7,7 @@ import (
 
 type MusicPlayer struct {
 	Conf         *PlaybackConfig
-	player       *FFPlay
+	player       *Mplayer
 	probe        *FFprobe
 	playlist     []*Song
 	currentIndex float64
@@ -21,7 +21,7 @@ func NewMusicPlayer(conf *PlaybackConfig) *MusicPlayer {
 
 	return &MusicPlayer{
 		Conf:         conf,
-		player:       NewFFplay(conf.FFMpegConf.FFPlay),
+		player:       NewMplayer(conf.FFMpegConf.MPlayer),
 		probe:        NewFFprobe(conf.FFMpegConf.FFProbe),
 		playlist:     make([]*Song, 0),
 		currentIndex: 0,

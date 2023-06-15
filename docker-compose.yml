@@ -1,0 +1,10 @@
+version: 3
+services:
+  app:
+    image: "mmhk/mmfm-worker"
+    environment:
+      - MMFM_HOST=192.168.33.6:8888
+    devices:
+      - /dev/snd:/dev/snd
+    volumes:
+      - ./temp:/tmp/music

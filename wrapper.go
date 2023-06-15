@@ -157,8 +157,7 @@ func (this *FFPlay) Play(mediaPath string, secondStart int) (chan io.Reader, err
 		}
 	}
 
-	this.builder = NewBuilder(this.bin).SetParams("-autoexit", "-nodisp",
-		"-volume", "100",
+	this.builder = NewBuilder(this.bin).SetParams("-autoexit", "-nodisp", "-af", "volume=normal",
 		"-ss", fmt.Sprintf("%d", secondStart),
 		"-i",
 		mediaPath)
@@ -174,6 +173,49 @@ func (this *FFPlay) Play(mediaPath string, secondStart int) (chan io.Reader, err
 }
 
 func (this *FFPlay) Stop() error {
+	go this.builder.Stop()
+	defer func() {
+		this.builder = nil
+	}()
+
+	return nil
+}
+
+type Mplayer struct {
+	bin string
+	builder *CommandBuilder
+}
+
+func NewMplayer(binPath string) *Mplayer {
+	return &Mplayer{
+		bin: binPath,
+	}
+}
+
+func (this *Mplayer) Play(mediaPath string, secondStart int) (chan io.Reader, error) {
+	if this.builder != nil {
+		err := this.builder.Stop()
+		if err != nil {
+			log.Error(err)
+		}
+	}
+
+	this.builder = NewBuilder(this.bin).SetParams("-vo", "null", "-quiet",
+		"-af", "volnorm=2:0.75",
+		"-ss", fmt.Sprintf("%d", secondStart),
+		mediaPath)
+
+	build := this.builder
+	finish, err := build.Start()
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	return finish, nil
+}
+
+func (this *Mplayer) Stop() error {
 	go this.builder.Stop()
 	defer func() {
 		this.builder = nil

@@ -31,6 +31,17 @@ go build -o mmfm-playback-go .
 mmfm-playback-go -c ./conf.json
 ```
 
+## Docker
+
+- 编译 `image`
+```shell
+docker-compose --file ./docker-compose-build.yml build --pull
+```
+- 执行
+```shell
+docker-compose --file ./docker-compose.yml run -d
+```
+
 ## 配置文件说明
 
 ```json

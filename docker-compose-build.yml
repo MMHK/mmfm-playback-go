@@ -1,0 +1,10 @@
+version: "3"
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - "linux/arm/v7"
+        - "linux/amd64"
+    image: "mmhk/mmfm-worker"

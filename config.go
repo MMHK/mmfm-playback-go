@@ -9,6 +9,7 @@ import (
 type FFmpegConfig struct {
 	FFPlay  string `json:"ffplay"`
 	FFProbe string `json:"ffprobe"`
+	MPlayer string `json:"mplayer"`
 }
 
 type PlaybackConfig struct {
