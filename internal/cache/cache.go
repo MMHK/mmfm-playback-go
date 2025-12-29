@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mmfm-playback-go/internal/logger"
 	"mmfm-playback-go/pkg/types"
 	"net/http"
@@ -90,30 +91,50 @@ func (fc *FileCache) Cache(key string) string {
 			os.MkdirAll(dir, 0777)
 		}
 
-		resp, err := http.Get(key)
-		if err != nil {
-			logger.Logger.Error(err)
-			return
-		}
-		defer resp.Body.Close()
+		isHTTP := strings.HasPrefix(key, "http")
 
-		if resp.StatusCode != 200 {
-			logger.Logger.Error("url return:", resp.StatusCode)
-			return
-		}
+		if isHTTP {
+			resp, err := http.Get(key)
+			if err != nil {
+				logger.Logger.Error(err)
+				return
+			}
+			defer resp.Body.Close()
 
-		out, err := os.Create(path)
-		if err != nil {
-			logger.Logger.Error(err)
-			return
-		}
-		defer out.Close()
+			if resp.StatusCode != 200 {
+				logger.Logger.Error("url return:", resp.StatusCode)
+				return
+			}
 
-		// Write the body to file
-		_, err = io.Copy(out, resp.Body)
-		if err != nil {
-			logger.Logger.Error(err)
-			return
+			out, err := os.Create(path)
+			if err != nil {
+				logger.Logger.Error(err)
+				return
+			}
+			defer out.Close()
+			// Write the body to file
+			_, err = io.Copy(out, resp.Body)
+			if err != nil {
+				logger.Logger.Error(err)
+				return
+			}
+		} else {
+			content, err := ioutil.ReadFile(key)
+			if err != nil {
+				logger.Logger.Error(err)
+				return
+			}
+
+			out, err := os.Create(path)
+			if err != nil {
+				logger.Logger.Error(err)
+				return
+			}
+			defer out.Close()
+			_, err = out.Write(content)
+			if err != nil {
+				logger.Logger.Error(err)
+			}
 		}
 
 		logger.Logger.Debug("cache music file:", path)

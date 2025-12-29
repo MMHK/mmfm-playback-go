@@ -61,3 +61,15 @@ func TestMusicPlayer_Play(t *testing.T) {
 	}
 
 }
+
+func TestMusicPlayer_Start(t *testing.T) {
+	if conf == nil {
+		t.Skip("Skipping test because conf is nil")
+	}
+	player := NewMusicPlayer(conf)
+
+	err := player.Start()
+	if err != nil {
+		t.Error("Expected no error, got:", err)
+	}
+}

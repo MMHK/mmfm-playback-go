@@ -14,13 +14,21 @@ type FFmpegConfig struct {
 	MPlayer string `json:"mplayer"`
 }
 
+// ScheduledAudio represents a scheduled audio playback configuration
+type ScheduledAudio struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Schedule string `json:"schedule"` // Time in cron format or specific time format
+}
+
 // PlaybackConfig holds the main configuration for the playback service
 type PlaybackConfig struct {
-	FFMpegConf   *FFmpegConfig `json:"ffmpeg"`
-	WebSocketAPI string        `json:"ws"`
-	WebAPI       string        `json:"web"`
-	CachePath    string        `json:"cache"`
-	configFile   string
+	FFMpegConf      *FFmpegConfig    `json:"ffmpeg"`
+	WebSocketAPI    string           `json:"ws"`
+	WebAPI          string           `json:"web"`
+	CachePath       string           `json:"cache"`
+	ScheduledAudios []ScheduledAudio `json:"scheduled_audios,omitempty"`
+	configFile      string
 }
 
 // NewConfig creates a new configuration from file or environment variables

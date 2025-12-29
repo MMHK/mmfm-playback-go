@@ -1,12 +1,15 @@
 package player
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"mmfm-playback-go/internal/cache"
 	"mmfm-playback-go/internal/chat"
 	"mmfm-playback-go/internal/config"
 	"mmfm-playback-go/internal/logger"
 	"mmfm-playback-go/pkg/types"
+	"net/http"
 	"time"
 )
 
@@ -31,11 +34,14 @@ type MusicPlayer struct {
 	currentSong  *types.Song
 	cache        *cache.FileCache
 	pauseFlag    bool
+	// Add fields for scheduled audio playback
+	scheduledAudioPlaying bool
+	originalPaused        bool
 }
 
 // NewMusicPlayer creates a new music player instance
 func NewMusicPlayer(conf *config.PlaybackConfig) *MusicPlayer {
-	return &MusicPlayer{
+	player := &MusicPlayer{
 		Conf:         conf,
 		player:       NewMplayer(conf.FFMpegConf.MPlayer),
 		probe:        NewFFprobe(conf.FFMpegConf.FFProbe),
@@ -45,6 +51,158 @@ func NewMusicPlayer(conf *config.PlaybackConfig) *MusicPlayer {
 		cache:        cache.NewFileCache(conf.CachePath),
 		chat:         chat.NewChatClient(conf.WebSocketAPI),
 	}
+
+	// Initialize scheduled audio handling if scheduled audios are configured
+	if len(conf.ScheduledAudios) > 0 {
+		go player.handleScheduledAudios()
+	}
+
+	return player
+}
+
+// handleScheduledAudios manages scheduled audio playback
+func (mp *MusicPlayer) handleScheduledAudios() {
+	for {
+		// Check for scheduled audios that should play now
+		for _, scheduledAudio := range mp.Conf.ScheduledAudios {
+			if mp.isTimeToPlay(scheduledAudio.Schedule) {
+				// Play the scheduled audio
+				mp.playScheduledAudio(scheduledAudio)
+			}
+		}
+		// Check every 30 seconds for scheduled audios
+		time.Sleep(30 * time.Second)
+	}
+}
+
+// isTimeToPlay checks if the current time matches the schedule
+func (mp *MusicPlayer) isTimeToPlay(schedule string) bool {
+	if mp.scheduledAudioPlaying || mp.currentSong == nil {
+		return false
+	}
+	// For now, we'll implement a simple time format check
+	// Expected format: "HH:MM" for daily scheduling
+	if len(schedule) == 5 && string(schedule[2]) == ":" {
+		currentTime := time.Now()
+		currentHour := currentTime.Hour()
+		currentMinute := currentTime.Minute()
+
+		var hour, minute int
+		if _, err := fmt.Sscanf(schedule, "%d:%d", &hour, &minute); err != nil {
+			return false
+		}
+
+		return currentHour == hour && currentMinute == minute
+	}
+
+	// TODO: Implement cron-like scheduling support for more complex schedules
+	Logger.Debug("Schedule format not yet supported:", schedule)
+	return false
+}
+
+// playScheduledAudio handles playing a scheduled audio, pausing current playback
+func (mp *MusicPlayer) playScheduledAudio(scheduledAudio config.ScheduledAudio) {
+	Logger.Infof("Playing scheduled audio: %s at %s", scheduledAudio.Name, scheduledAudio.URL)
+
+	// Check if we're already playing a scheduled audio
+	if mp.scheduledAudioPlaying {
+		Logger.Debug("Already playing a scheduled audio, skipping:", scheduledAudio.Name)
+		return
+	}
+
+	// Pause current playback and save state
+	mp.scheduledAudioPlaying = true
+	mp.originalPaused = mp.pauseFlag
+
+	if mp.currentSong != nil {
+		Logger.Debug("Pausing current song:", mp.currentSong.Name)
+		mp.Pause()
+	}
+
+	// Create a temporary song object for the scheduled audio
+	tempSong := &types.Song{
+		Name:     scheduledAudio.Name,
+		URL:      scheduledAudio.URL,
+		Duration: 0, // Will be updated after probing
+		Index:    0,
+	}
+
+	// Play the scheduled audio
+	go func() {
+		err := mp.playWithoutInterrupt(tempSong, 0)
+		if err != nil {
+			Logger.Error("Error playing scheduled audio:", err)
+		}
+		// After scheduled audio finishes, resume original playback
+		mp.resumeOriginalPlayback()
+	}()
+}
+
+// playWithoutInterrupt plays an audio without triggering normal playback events
+func (mp *MusicPlayer) playWithoutInterrupt(song *types.Song, second int) error {
+	Logger.Debug("Playing scheduled audio without interrupting normal flow", song.Name)
+	url := mp.cache.Cache(song.GetURL())
+
+	info, err := mp.probe.GetMediaInfo(url)
+	if err != nil {
+		Logger.Error(err)
+		return err
+	}
+	song.Index = float64(second)
+	duration, err := info.GetDuration()
+	if err != nil {
+		Logger.Error(err)
+		return err
+	}
+	Logger.Debug("Scheduled audio duration:", duration)
+
+	song.Duration = duration
+	finish, err := mp.player.Play(url, second)
+	if err != nil {
+		return err
+	}
+
+	// Wait for the audio to finish
+	<-finish
+	return nil
+}
+
+// resumeOriginalPlayback restores the original playback after scheduled audio
+func (mp *MusicPlayer) resumeOriginalPlayback() {
+	Logger.Info("Resuming original playback after scheduled audio")
+
+	// Reset scheduled audio flag
+	mp.scheduledAudioPlaying = false
+
+	// If original playback was not paused, resume it
+	if !mp.originalPaused {
+		if mp.currentSong != nil {
+			// Resume from the saved position
+			go func() {
+				err := mp.Play(mp.currentSong, int(mp.currentSong.Index))
+				if err != nil {
+					Logger.Error("Error resuming original playback:", err)
+					// If resume fails, continue with normal playback
+					mp.Next()
+				}
+			}()
+		} else {
+			// If no original song, just continue with next in playlist
+			mp.Next()
+		}
+	} else {
+		// Original was paused, so keep it paused
+		mp.pauseFlag = true
+		mp.FirePause()
+	}
+}
+
+// Pause pauses the current playback
+func (mp *MusicPlayer) Pause() {
+	Logger.Debug("Pausing song", mp.currentSong.Name)
+	mp.pauseFlag = true
+	mp.player.Stop()
+	mp.FirePause()
 }
 
 // Start initializes and starts the music player
@@ -213,7 +371,23 @@ func LoadPlaylist(apiURL string) ([]*types.Song, error) {
 	// In a real implementation, you would make an HTTP request to apiURL
 	// and parse the response to get a list of songs
 	Logger.Info("Loading playlist from", apiURL)
-	return []*types.Song{}, nil
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var playlist []*types.Song
+	err = json.NewDecoder(resp.Body).Decode(&playlist)
+	if err != nil {
+		return nil, err
+	}
+	Logger.Debug("Loaded playlist:", playlist)
+	return playlist, nil
 }
 
 // Play plays a song from a specific time
@@ -240,6 +414,9 @@ func (mp *MusicPlayer) Play(song *types.Song, second int) error {
 	finish, err := mp.player.Play(url, second)
 	mp.pauseFlag = false
 	mp.currentSong = song
+	mp.currentSong.Duration = duration
+	logger.Logger.Infof("playing song %s, duration %f, start %d", song.Name, duration, second)
+	mp.FirePlaying()
 
 	go func() {
 		<-finish

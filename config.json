@@ -6,5 +6,12 @@
     },
     "ws": "ws://${MMFM_HOST}/io/?EIO=3\u0026transport=websocket",
     "cache": "/tmp/music",
-    "web": "http://${MMFM_HOST}/song/get"
+    "web": "http://${MMFM_HOST}/song/get",
+    "scheduled_audios": [
+        {
+            "name": "Scheduled Audio",
+            "url": "C:/Users/mixmedia/Downloads/offline.mp3",
+            "schedule": "16:41"
+        }
+    ]
 }

@@ -15,4 +15,5 @@
 /testdata/data
 /.env
 /tests/offline.mp3
+/tests/cache
 /temp/data/dd58c37583bf7e778bf63c2853b5095a
