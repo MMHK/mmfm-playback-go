@@ -1,41 +1,48 @@
-FROM golang:1.13-alpine as builder
+# Build stage
+FROM golang:1.21-alpine AS builder
 
-# Add Maintainer Info
-LABEL maintainer="Sam Zhou <sam@mixmedia.com>"
+# Install git for go modules
+RUN apk add --no-cache git
 
-# Set the Current Working Directory inside the container
-WORKDIR /app/mmfm-playback-go
-
-# Copy the source from the current directory to the Working Directory inside the container
-COPY . .
-
-# Build the Go app
-RUN go version \
- && export GO111MODULE=on \
- && export GOPROXY=https://goproxy.cn,direct \
- && go mod vendor \
- && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o mmfm-go
-
-######## Start a new stage from scratch #######
-FROM alpine:latest  
-
-RUN apk add --no-cache tzdata dumb-init gettext-envsubst ffmpeg mplayer
-
+# Set the working directory
 WORKDIR /app
 
-# Copy the Pre-built binary file from the previous stage
-COPY --from=builder /app/mmfm-playback-go/mmfm-go .
-COPY ./config.json ./config.json
+# Copy go mod files
+COPY go.mod go.sum ./
 
-ENV TZ=Asia/Hong_Kong \
- SERVICE_NAME=mmfm-go \
- FFPLAY_BIN=/usr/bin/ffplay \
- FFPROBE_BIN=/usr/bin/ffprobe \
- MPLAYER_BIN=/usr/bin/mplayer \
- MMFM_HOST=192.168.33.6
+# Download dependencies
+RUN go mod download
 
+# Copy the source code
+COPY . .
 
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -o mmfm-playback-go ./cmd/mmfm-playback
 
-CMD envsubst < /app/config.json > /app/temp.json \
- && /app/mmfm-go -c /app/temp.json
+# Final stage
+FROM alpine:latest
+
+# Install ffmpeg for audio playback
+RUN apk --no-cache add ffmpeg
+
+# Create a non-root user
+RUN adduser -D -s /bin/sh appuser
+
+# Create cache directory
+RUN mkdir -p /home/appuser/cache
+RUN chown -R appuser:appuser /home/appuser
+
+# Copy the binary from builder stage
+COPY --from=builder /app/mmfm-playback-go /usr/local/bin/mmfm-playback-go
+
+# Copy the config file
+COPY configs/config.json /app/config.json
+
+# Switch to non-root user
+USER appuser
+
+# Expose any necessary ports (if needed for API)
+EXPOSE 8080
+
+# Run the application
+CMD ["mmfm-playback-go", "-c", "/app/config.json"]

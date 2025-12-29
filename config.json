@@ -2,7 +2,7 @@
     "ffmpeg": {
         "ffplay": "${FFPLAY_BIN}",
         "ffprobe": "${FFPROBE_BIN}",
-        "mplayer": "${MPLAYER_BIN}",
+        "mplayer": "${MPLAYER_BIN}"
     },
     "ws": "ws://${MMFM_HOST}/io/?EIO=3\u0026transport=websocket",
     "cache": "/tmp/music",

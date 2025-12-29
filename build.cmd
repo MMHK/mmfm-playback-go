@@ -1,4 +1,11 @@
-docker buildx build -t local/mmfm-playback-go --platform=linux/arm/v7 . --load
-id = $(docker create "local/mmfm-playback-go")
-docker cp $id:/app/mmfm-go-armv7 ./mmfm-go-armv7-v2
-docker rm $id
+@echo off
+echo Building mmfm-playback-go...
+
+go build -mod=readonly -o bin/mmfm-playback-go.exe ./cmd/mmfm-playback
+
+if %ERRORLEVEL% EQU 0 (
+    echo Build successful! Binary located at bin/mmfm-playback-go.exe
+) else (
+    echo Build failed!
+    exit /b %ERRORLEVEL%
+)

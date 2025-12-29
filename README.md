@@ -1,85 +1,123 @@
 # mmfm-playback-go
 
-为 `MMFM` 提供后台播放器。
+為 `MMFM` 提供后台播放器。
 
-此项目是对`ffplay`封装执行播放任务，并通过`websocket`([socket.io](https://socket.io)) 与 `MMFM` 通讯同步播放器状态。
+此項目是對 `ffplay` 封裝執行播放任務，並通過 `websocket`([socket.io](https://socket.io)) 與 `MMFM` 通訊同步播放器狀態。
 
-用于嵌入式系统或者无桌面`linux`系统的音频播放。
+用於嵌入式系統或者無桌面 `linux` 系統的音頻播放。
 
-`ffmpeg`的可执行文件可以在[这里](https://ffbinaries.com/downloads)下载，
-不过建议linux系统直接 `yum` 及 `apt` 安装。
+`ffmpeg` 的可執行文件可以在[這裡](https://ffbinaries.com/downloads)下載，
+不過建議 linux 系統直接 `yum` 及 `apt` 安裝。
 
-请不要尝试在 `docker` 运行，linux下的声音驱动是个深坑。
+請不要嘗試在 `docker` 運行，linux 下的聲音驅動是個深坑。
 
-## 项目依赖
+## 項目依賴
 
-- [socket.io](https://socket.io)，成熟的 `websocket` 多端通讯方案。
-- [ffmpeg 4.x](https://www.ffmpeg.org/)，成熟的流媒体播放及编码/解码方案。
+- [socket.io](https://socket.io)，成熟的 `websocket` 多端通訊方案。
+- [ffmpeg 4.x](https://www.ffmpeg.org/)，成熟的流媒體播放及編碼/解碼方案。
 
-## 编译项目
+## 項目結構
 
-```bash
-# 该项目已经支持go mod
-export GO111MODULE=on
-go mod vendor
-go build -o mmfm-playback-go .
+```
+mmfm-playback-go/
+├── cmd/
+│   └── mmfm-playback/
+│       └── main.go
+├── internal/
+│   ├── config/
+│   │   └── config.go
+│   ├── player/
+│   │   ├── player.go
+│   │   └── mplayer.go
+│   ├── cache/
+│   │   └── cache.go
+│   ├── chat/
+│   │   └── chat.go
+│   ├── probe/
+│   │   └── probe.go
+│   └── logger/
+│       └── logger.go
+├── pkg/
+│   └── types/
+│       └── types.go
+├── configs/
+│   └── config.json
+├── docs/
+├── build/
+├── Dockerfile
+├── docker-compose.yml
+├── go.mod
+├── go.sum
+└── README.md
 ```
 
-## 执行
+## 配置管理
+
+項目支持多種配置格式：
+
+### JSON 配置文件
+默認為 `config.json`，也可以通過 `-c` 參數指定配置文件路徑：
 
 ```bash
-mmfm-playback-go -c ./conf.json
+./mmfm-playback-go -c ./myconfig.json
+```
+
+### 環境變量配置
+支持以下環境變量：
+
+- `FFPLAY_PATH` - ffplay 執行文件位置
+- `FFPROBE_PATH` - ffprobe 執行文件位置
+- `MPLAYER_PATH` - mplayer 執行文件位置
+- `WEBSOCKET_API` - MMFM WebSocket 通訊地址
+- `WEB_API` - MMFM 獲取歌曲地址 API
+- `CACHE_PATH` - 音頻文件緩存位置
+
+環境變量的優先級高於配置文件中的值。
+
+## 編譯項目
+
+```bash
+go build -o mmfm-playback-go ./cmd/mmfm-playback
+```
+
+## 執行
+
+```bash
+./mmfm-playback-go -c ./configs/config.json
 ```
 
 ## Docker
 
-- 编译 `image`
+- 編譯 `image`
 ```shell
-docker-compose --file ./docker-compose-build.yml build --pull
-```
-- 执行
-```shell
-docker-compose --file ./docker-compose.yml run -d
+docker build -t mmfm-playback-go .
 ```
 
-## 配置文件说明
+- 執行
+```shell
+docker run -d --env-file .env mmfm-playback-go
+```
+
+## 配置文件說明
 
 ```json
 {
     "ffmpeg": {
         "ffplay": "...", 
-        "ffprobe": "..."
+        "ffprobe": "...",
+        "mplayer": "..."
     },
-    "ws": "ws://localhost:8888/io/?EIO=3\u0026transport=websocket",
+    "ws": "ws://localhost:8888/io/?EIO=3&transport=websocket",
     "cache": "...",
     "web": "http://localhost:8888/song/get"
 }
 ```
 
-|key|说明|
+|key|說明|
 |-|-|
-|ffmpeg.ffplay|ffplay 执行文件位置，linux下使用 which ffplay获取|
-|ffmpeg.ffprobe|ffprobe 执行文件位置，linux下使用 which ffprobe获取|
-|ws|`mmfm` websocket 通讯地址|
-|cache|音频文件缓存位置，建议使用系统临时目录，重新即烧毁|
-|web|`mmfm` 获取歌曲地址api|
-
-
-## 开发日志
-
-- `ffmpeg`， 已经将原来项目依赖的 `Player`，更换为`ffmpeg` 使用cli wrapper的方式进行音乐的播放。
-  因为QQ音乐的API返回的是`m4a`格式，这种格式属于`mp4`的一个子集，所以更换成支持格式更广泛的`ffmpeg`。
-
-  安装之前请确保系统中已经安装好 `ffmpeg`。
-
-- `Linux` 下 `ALSA` 下的问题 , 虽然 `ALSA` 包含了大部分的声卡驱动， but 这linux下的驱动有点麻烦，驱动是通用的，
-   还需要配合不同的配置参数，才能正常输出声音的。具体步骤：
-   
-   - 使用 `aplay -l` / `alasmixer` ，确保声音模块已经正常加载。
-   - 如果发现自己的声卡型号带有 `HDA` 开头的话，都建议使用 `snd-hda-intel` 这个内核驱动。
-   - 使用 `cat /proc/asound/card0/codec* | grep Codec` ，确认一下所属的声卡芯片型号。
-   - 去这个[页面](http://lxr.linux.no/linux+v3.2.19/Documentation/sound/alsa/HD-Audio-Models.txt) 找 `ALSA` 支持的芯片模式。
-   - 修改 `/etc/modprobe.d/alsa-base.conf` 文件。
-   - 加入 `options snd-hda-intel model=[model_name]` ， 后面的 `model_name`, 请根据 [HD-Audio-Models.txt](http://lxr.linux.no/linux+v3.2.19/Documentation/sound/alsa/HD-Audio-Models.txt)， 里面的芯片模式逐个尝试。
-   - 修改完 `alsa-base.conf`, 使用 `alsa force-reload` 激活配置，如果幸运的话，试几个model之后就能出声音了...
-   
+|ffmpeg.ffplay|ffplay 執行文件位置，linux下使用 which ffplay獲取|
+|ffmpeg.ffprobe|ffprobe 執行文件位置，linux下使用 which ffprobe獲取|
+|ffmpeg.mplayer|mplayer 執行文件位置|
+|ws|`mmfm` websocket 通訊地址|
+|cache|音頻文件緩存位置，建議使用系統臨時目錄，重新即燒毀|
+|web|`mmfm` 獲取歌曲地址api|

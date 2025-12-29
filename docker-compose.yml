@@ -1,10 +1,19 @@
-version: 3
+version: '3.8'
+
 services:
-  app:
-    image: "mmhk/mmfm-worker"
-    environment:
-      - MMFM_HOST=192.168.33.6:8888
-    devices:
-      - /dev/snd:/dev/snd
+  mmfm-playback:
+    build: .
+    container_name: mmfm-playback
     volumes:
-      - ./temp:/tmp/music
+      - ./cache:/home/appuser/cache
+      - ./config.json:/app/config.json
+    environment:
+      - FFPLAY_PATH=/usr/bin/ffplay
+      - FFPROBE_PATH=/usr/bin/ffprobe
+      - MPLAYER_PATH=/usr/bin/mplayer
+      - WEBSOCKET_API=ws://host.docker.internal:8888/io/?EIO=3&transport=websocket
+      - WEB_API=http://host.docker.internal:8888/song/get
+      - CACHE_PATH=/home/appuser/cache
+    # For Linux hosts, replace host.docker.internal with your host IP
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
