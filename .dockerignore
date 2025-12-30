@@ -5,3 +5,7 @@ Dockerfile
 mmfm-go-armv7
 *.sh
 *.cmd
+build
+docs
+.env
+.env*
