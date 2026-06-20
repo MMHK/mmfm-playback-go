@@ -16,8 +16,17 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func printServiceInfo(configPath string) {
 	slog.Info("mmfm-playback-go starting",
+		"version", version,
+		"commit", commit,
+		"date", date,
 		"pid", os.Getpid(),
 		"go_version", runtime.Version(),
 		"os_arch", fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),

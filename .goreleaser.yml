@@ -1,0 +1,52 @@
+version: 2
+
+builds:
+  - id: mmfm-playback-go
+    main: ./cmd/mmfm-playback
+    binary: mmfm-playback-go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "arm" }}armv7
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - src: .env.example
+        dst: .env.example
+      - src: configs/config.json
+        dst: configs/config.json
+      - src: README.md
+        dst: README.md
+      - src: LICENSE
+        dst: LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^Merge"
+      - "^style:"
