@@ -11,6 +11,7 @@ import (
 	"mmfm-playback-go/internal/config"
 	"mmfm-playback-go/pkg/types"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -39,6 +40,8 @@ type MusicPlayer struct {
 	ctx                   context.Context
 	cancel                context.CancelFunc
 	stopCh                chan struct{}
+	stopOnce              sync.Once
+	wg                    sync.WaitGroup
 }
 
 // NewMusicPlayer creates a new music player instance
@@ -59,20 +62,27 @@ func NewMusicPlayer(conf *config.PlaybackConfig) *MusicPlayer {
 	// Initialize scheduled audio handling if scheduled audios are configured
 	if len(conf.ScheduledAudios) > 0 {
 		player.ctx, player.cancel = context.WithCancel(player.ctx)
-		go player.handleScheduledAudios()
+		player.wg.Add(1)
+		go func() {
+			defer player.wg.Done()
+			player.handleScheduledAudios()
+		}()
 	}
 
 	return player
 }
 
 func (mp *MusicPlayer) Stop() {
-	slog.Info("stopping music player")
-	close(mp.stopCh)
-	mp.player.Stop()
-	if mp.chat != nil {
-		mp.chat.Close()
-	}
-	slog.Info("music player stopped")
+	mp.stopOnce.Do(func() {
+		slog.Info("stopping music player")
+		close(mp.stopCh)
+		mp.player.Stop()
+		if mp.chat != nil {
+			mp.chat.Close()
+		}
+		mp.wg.Wait()
+		slog.Info("music player stopped")
+	})
 }
 
 // handleScheduledAudios manages scheduled audio playback
@@ -247,7 +257,9 @@ start:
 			slog.Error("get song in playlist failed", "error", err)
 			return err
 		}
+		mp.wg.Add(1)
 		go func() {
+			defer mp.wg.Done()
 			err := mp.Play(song, 0)
 			if err != nil {
 				slog.Error("play song failed", "error", err)
@@ -256,7 +268,11 @@ start:
 		}()
 	}
 
-	go mp.TrackPlaying()
+	mp.wg.Add(1)
+	go func() {
+		defer mp.wg.Done()
+		mp.TrackPlaying()
+	}()
 	mp.Listen()
 
 	return nil
@@ -348,8 +364,6 @@ func (mp *MusicPlayer) Listen() error {
 			}
 		}
 	}
-
-	return nil
 }
 
 // FirePause sends a pause event
