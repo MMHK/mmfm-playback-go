@@ -68,7 +68,7 @@ type FFmpegConfig struct {
         "ffprobe": "/usr/bin/ffprobe",
         "mplayer": "/usr/bin/mplayer"
     },
-    "ws": "ws://localhost:8888/io/?EIO=3&transport=websocket",
+    "ws": "http://localhost:8888",
     "cache": "./cache",
     "web": "http://localhost:8888/song/get"
 }

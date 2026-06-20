@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"mmfm-playback-go/internal/logger"
+	"log/slog"
 	"mmfm-playback-go/pkg/types"
 	"net/http"
 	"os"
@@ -41,7 +41,7 @@ func (fc *FileCache) Flush() error {
 func (fc *FileCache) Clean(playlist []*types.Song) error {
 	allCaches, err := filepath.Glob(filepath.Join(fc.basePath, "data", "*"))
 	if err != nil {
-		logger.Logger.Error(err)
+		slog.Error("clean cache failed", "error", err)
 		return err
 	}
 
@@ -77,12 +77,12 @@ func (fc *FileCache) Cache(key string) string {
 
 	path := filepath.Join(fc.basePath, "data", hashKey)
 	if _, err := os.Stat(path); err == nil {
-		logger.Logger.Info("cache hint ", path)
+		slog.Info("cache hit", "path", path)
 		return path
 	}
 
 	go func() {
-		logger.Logger.Debug("begin cache music file")
+		slog.Debug("begin cache music file")
 
 		path := filepath.Join(fc.basePath, "data", hashKey)
 		dir := filepath.Dir(path)
@@ -96,48 +96,48 @@ func (fc *FileCache) Cache(key string) string {
 		if isHTTP {
 			resp, err := http.Get(key)
 			if err != nil {
-				logger.Logger.Error(err)
+				slog.Error("http get failed", "url", key, "error", err)
 				return
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != 200 {
-				logger.Logger.Error("url return:", resp.StatusCode)
+				slog.Error("url return non-200", "url", key, "status_code", resp.StatusCode)
 				return
 			}
 
 			out, err := os.Create(path)
 			if err != nil {
-				logger.Logger.Error(err)
+				slog.Error("create cache file failed", "path", path, "error", err)
 				return
 			}
 			defer out.Close()
 			// Write the body to file
 			_, err = io.Copy(out, resp.Body)
 			if err != nil {
-				logger.Logger.Error(err)
+				slog.Error("copy body to cache failed", "path", path, "error", err)
 				return
 			}
 		} else {
 			content, err := ioutil.ReadFile(key)
 			if err != nil {
-				logger.Logger.Error(err)
+				slog.Error("read local file failed", "path", key, "error", err)
 				return
 			}
 
 			out, err := os.Create(path)
 			if err != nil {
-				logger.Logger.Error(err)
+				slog.Error("create cache file failed", "path", path, "error", err)
 				return
 			}
 			defer out.Close()
 			_, err = out.Write(content)
 			if err != nil {
-				logger.Logger.Error(err)
+				slog.Error("write cache file failed", "path", path, "error", err)
 			}
 		}
 
-		logger.Logger.Debug("cache music file:", path)
+		slog.Debug("cache music file done", "path", path)
 	}()
 
 	return key

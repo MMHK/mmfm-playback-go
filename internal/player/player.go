@@ -1,19 +1,18 @@
 package player
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"mmfm-playback-go/internal/cache"
 	"mmfm-playback-go/internal/chat"
 	"mmfm-playback-go/internal/config"
-	"mmfm-playback-go/internal/logger"
 	"mmfm-playback-go/pkg/types"
 	"net/http"
 	"time"
 )
-
-var Logger = logger.Logger
 
 // Player interface defines the music player functionality
 type Player interface {
@@ -37,6 +36,9 @@ type MusicPlayer struct {
 	// Add fields for scheduled audio playback
 	scheduledAudioPlaying bool
 	originalPaused        bool
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	stopCh                chan struct{}
 }
 
 // NewMusicPlayer creates a new music player instance
@@ -50,28 +52,43 @@ func NewMusicPlayer(conf *config.PlaybackConfig) *MusicPlayer {
 		pauseFlag:    true,
 		cache:        cache.NewFileCache(conf.CachePath),
 		chat:         chat.NewChatClient(conf.WebSocketAPI),
+		ctx:          context.Background(),
+		stopCh:       make(chan struct{}),
 	}
 
 	// Initialize scheduled audio handling if scheduled audios are configured
 	if len(conf.ScheduledAudios) > 0 {
+		player.ctx, player.cancel = context.WithCancel(player.ctx)
 		go player.handleScheduledAudios()
 	}
 
 	return player
 }
 
+func (mp *MusicPlayer) Stop() {
+	slog.Info("stopping music player")
+	close(mp.stopCh)
+	mp.player.Stop()
+	if mp.chat != nil {
+		mp.chat.Close()
+	}
+	slog.Info("music player stopped")
+}
+
 // handleScheduledAudios manages scheduled audio playback
 func (mp *MusicPlayer) handleScheduledAudios() {
 	for {
-		// Check for scheduled audios that should play now
-		for _, scheduledAudio := range mp.Conf.ScheduledAudios {
-			if mp.isTimeToPlay(scheduledAudio.Schedule) {
-				// Play the scheduled audio
-				mp.playScheduledAudio(scheduledAudio)
+		select {
+		case <-mp.stopCh:
+			slog.Debug("scheduled audio handler stopped")
+			return
+		case <-time.After(30 * time.Second):
+			for _, scheduledAudio := range mp.Conf.ScheduledAudios {
+				if mp.isTimeToPlay(scheduledAudio.Schedule) {
+					mp.playScheduledAudio(scheduledAudio)
+				}
 			}
 		}
-		// Check every 30 seconds for scheduled audios
-		time.Sleep(30 * time.Second)
 	}
 }
 
@@ -96,17 +113,17 @@ func (mp *MusicPlayer) isTimeToPlay(schedule string) bool {
 	}
 
 	// TODO: Implement cron-like scheduling support for more complex schedules
-	Logger.Debug("Schedule format not yet supported:", schedule)
+	slog.Debug("schedule format not yet supported", "schedule", schedule)
 	return false
 }
 
 // playScheduledAudio handles playing a scheduled audio, pausing current playback
 func (mp *MusicPlayer) playScheduledAudio(scheduledAudio config.ScheduledAudio) {
-	Logger.Infof("Playing scheduled audio: %s at %s", scheduledAudio.Name, scheduledAudio.URL)
+	slog.Info("playing scheduled audio", "name", scheduledAudio.Name, "url", scheduledAudio.URL)
 
 	// Check if we're already playing a scheduled audio
 	if mp.scheduledAudioPlaying {
-		Logger.Debug("Already playing a scheduled audio, skipping:", scheduledAudio.Name)
+		slog.Debug("already playing scheduled audio, skipping", "name", scheduledAudio.Name)
 		return
 	}
 
@@ -115,7 +132,7 @@ func (mp *MusicPlayer) playScheduledAudio(scheduledAudio config.ScheduledAudio) 
 	mp.originalPaused = mp.pauseFlag
 
 	if mp.currentSong != nil {
-		Logger.Debug("Pausing current song:", mp.currentSong.Name)
+		slog.Debug("pausing current song", "name", mp.currentSong.Name)
 		mp.Pause()
 	}
 
@@ -131,7 +148,7 @@ func (mp *MusicPlayer) playScheduledAudio(scheduledAudio config.ScheduledAudio) 
 	go func() {
 		err := mp.playWithoutInterrupt(tempSong, 0)
 		if err != nil {
-			Logger.Error("Error playing scheduled audio:", err)
+			slog.Error("error playing scheduled audio", "error", err)
 		}
 		// After scheduled audio finishes, resume original playback
 		mp.resumeOriginalPlayback()
@@ -140,21 +157,21 @@ func (mp *MusicPlayer) playScheduledAudio(scheduledAudio config.ScheduledAudio) 
 
 // playWithoutInterrupt plays an audio without triggering normal playback events
 func (mp *MusicPlayer) playWithoutInterrupt(song *types.Song, second int) error {
-	Logger.Debug("Playing scheduled audio without interrupting normal flow", song.Name)
+	slog.Debug("playing scheduled audio without interrupt", "name", song.Name)
 	url := mp.cache.Cache(song.GetURL())
 
 	info, err := mp.probe.GetMediaInfo(url)
 	if err != nil {
-		Logger.Error(err)
+		slog.Error("get media info failed", "error", err)
 		return err
 	}
 	song.Index = float64(second)
 	duration, err := info.GetDuration()
 	if err != nil {
-		Logger.Error(err)
+		slog.Error("get duration failed", "error", err)
 		return err
 	}
-	Logger.Debug("Scheduled audio duration:", duration)
+	slog.Debug("scheduled audio duration", "duration", duration)
 
 	song.Duration = duration
 	finish, err := mp.player.Play(url, second)
@@ -169,7 +186,7 @@ func (mp *MusicPlayer) playWithoutInterrupt(song *types.Song, second int) error 
 
 // resumeOriginalPlayback restores the original playback after scheduled audio
 func (mp *MusicPlayer) resumeOriginalPlayback() {
-	Logger.Info("Resuming original playback after scheduled audio")
+	slog.Info("resuming original playback")
 
 	// Reset scheduled audio flag
 	mp.scheduledAudioPlaying = false
@@ -181,7 +198,7 @@ func (mp *MusicPlayer) resumeOriginalPlayback() {
 			go func() {
 				err := mp.Play(mp.currentSong, int(mp.currentSong.Index))
 				if err != nil {
-					Logger.Error("Error resuming original playback:", err)
+					slog.Error("error resuming original playback", "error", err)
 					// If resume fails, continue with normal playback
 					mp.Next()
 				}
@@ -199,7 +216,7 @@ func (mp *MusicPlayer) resumeOriginalPlayback() {
 
 // Pause pauses the current playback
 func (mp *MusicPlayer) Pause() {
-	Logger.Debug("Pausing song", mp.currentSong.Name)
+	slog.Debug("pausing song", "name", mp.currentSong.Name)
 	mp.pauseFlag = true
 	mp.player.Stop()
 	mp.FirePause()
@@ -212,9 +229,9 @@ start:
 	list, err := LoadPlaylist(mp.Conf.WebAPI)
 	retryCounter++
 	if err != nil {
-		Logger.Error(err)
+		slog.Error("load playlist failed", "error", err)
 		if retryCounter < 10 {
-			Logger.Error("retry connect!")
+			slog.Error("retry connect", "attempt", retryCounter)
 			time.Sleep(time.Second * 2)
 			goto start
 		}
@@ -227,13 +244,13 @@ start:
 	if len(mp.playlist) > 0 {
 		song, err := mp.GetSongInPlayList(int(mp.currentIndex))
 		if err != nil {
-			Logger.Error(err)
+			slog.Error("get song in playlist failed", "error", err)
 			return err
 		}
 		go func() {
 			err := mp.Play(song, 0)
 			if err != nil {
-				Logger.Error(err)
+				slog.Error("play song failed", "error", err)
 				mp.Next()
 			}
 		}()
@@ -247,73 +264,88 @@ start:
 
 // Listen handles incoming chat messages
 func (mp *MusicPlayer) Listen() error {
-	listener, err := mp.chat.Listen()
+	listener, err := mp.chat.Listen(mp.stopCh)
 	if err != nil {
-		Logger.Error(err)
+		slog.Error("chat listen failed", "error", err)
 		return err
 	}
 
 	for {
-		msg := <-listener
-		switch msg.Command {
-		case "player.play":
-			if len(msg.Params) > 1 {
-				mp.pauseFlag = true
+		select {
+		case <-mp.stopCh:
+			slog.Info("listener stopped")
+			return nil
+		case msg := <-listener:
+			switch msg.Command {
+			case "player.play":
+				if len(msg.Params) > 1 {
+					mp.pauseFlag = true
 
-				index, ok := msg.Params[1].(float64)
-				if ok && index != mp.currentIndex {
-					mp.currentIndex = index
-				} else {
-					mp.currentIndex = 0
+					index, ok := msg.Params[1].(float64)
+					if ok && index != mp.currentIndex {
+						mp.currentIndex = index
+					} else {
+						mp.currentIndex = 0
+					}
+
+					song, err := mp.GetSongInPlayList(int(mp.currentIndex))
+					if err != nil {
+						slog.Error("get song failed", "error", err)
+						mp.Next()
+						break
+					}
+					mp.player.Stop()
+					err = mp.Play(song, 0)
+					if err != nil {
+						slog.Error("play failed", "error", err)
+						mp.Next()
+						break
+					}
 				}
-
-				song, err := mp.GetSongInPlayList(int(mp.currentIndex))
-				if err != nil {
-					Logger.Error(err)
-					mp.Next()
-					break
-				}
-				mp.player.Stop()
-				err = mp.Play(song, 0)
-				if err != nil {
-					Logger.Error(err)
-					mp.Next()
-					break
-				}
-			}
-			break
-
-		case "player.continue":
-			mp.pauseFlag = false
-			go mp.Play(mp.currentSong, int(mp.currentSong.Index))
-			break
-
-		case "player.pause":
-			Logger.Debug("pause song", mp.currentSong.Name)
-			mp.pauseFlag = true
-			mp.player.Stop()
-			mp.FirePause()
-			break
-
-		case "player.current":
-			if mp.chat != nil {
-				if mp.pauseFlag {
-					mp.FirePause()
-				} else {
-					mp.FirePlaying()
-				}
-			}
-			break
-
-		case "update":
-			Logger.Debug("update playlist")
-			list, err := LoadPlaylist(mp.Conf.WebAPI)
-			if err != nil {
-				Logger.Error(err)
 				break
+
+			case "player.continue":
+				if mp.currentSong == nil {
+					slog.Debug("continue ignored, no current song")
+					break
+				}
+				mp.pauseFlag = false
+				go mp.Play(mp.currentSong, int(mp.currentSong.Index))
+				break
+
+			case "player.pause":
+				if mp.currentSong == nil {
+					slog.Debug("pause ignored, no current song")
+					break
+				}
+				slog.Debug("pause song", "name", mp.currentSong.Name)
+				mp.pauseFlag = true
+				mp.player.Stop()
+				mp.FirePause()
+				break
+
+			case "player.current":
+				if mp.chat != nil {
+					if mp.pauseFlag {
+						mp.FirePause()
+					} else {
+						mp.FirePlaying()
+					}
+				}
+				break
+
+			case "update":
+				slog.Debug("update playlist")
+				list, err := LoadPlaylist(mp.Conf.WebAPI)
+				if err != nil {
+					slog.Error("load playlist failed", "error", err)
+					break
+				}
+				mp.playlist = list
+				break
+			default:
+				slog.Debug("unknown command", "command", msg.Command)
 			}
-			mp.playlist = list
-			break
 		}
 	}
 
@@ -358,10 +390,15 @@ func (mp *MusicPlayer) FirePlaying() {
 // TrackPlaying continuously sends playing events
 func (mp *MusicPlayer) TrackPlaying() {
 	for {
-		if !mp.pauseFlag {
-			mp.FirePlaying()
+		select {
+		case <-mp.stopCh:
+			slog.Debug("track player stopped")
+			return
+		case <-time.After(time.Second):
+			if !mp.pauseFlag {
+				mp.FirePlaying()
+			}
 		}
-		time.Sleep(time.Second * 1)
 	}
 }
 
@@ -370,7 +407,7 @@ func LoadPlaylist(apiURL string) ([]*types.Song, error) {
 	// This is a placeholder implementation
 	// In a real implementation, you would make an HTTP request to apiURL
 	// and parse the response to get a list of songs
-	Logger.Info("Loading playlist from", apiURL)
+	slog.Info("loading playlist", "api_url", apiURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, err
@@ -386,36 +423,36 @@ func LoadPlaylist(apiURL string) ([]*types.Song, error) {
 	if err != nil {
 		return nil, err
 	}
-	Logger.Debug("Loaded playlist:", playlist)
+	slog.Debug("loaded playlist", "count", len(playlist))
 	return playlist, nil
 }
 
 // Play plays a song from a specific time
 func (mp *MusicPlayer) Play(song *types.Song, second int) error {
-	Logger.Debug("play song", song.Name)
+	slog.Debug("play song", "name", song.Name)
 	url := mp.cache.Cache(song.GetURL())
 
 	info, err := mp.probe.GetMediaInfo(url)
 	if err != nil {
-		Logger.Error(err)
+		slog.Error("get media info failed", "error", err)
 		mp.pauseFlag = true
 		return err
 	}
 	song.Index = float64(second)
 	duration, err := info.GetDuration()
 	if err != nil {
-		Logger.Error(err)
+		slog.Error("get duration failed", "error", err)
 		mp.pauseFlag = true
 		return err
 	}
-	Logger.Debug(duration)
+	slog.Debug("song duration", "duration", duration)
 
 	song.Duration = duration
 	finish, err := mp.player.Play(url, second)
 	mp.pauseFlag = false
 	mp.currentSong = song
 	mp.currentSong.Duration = duration
-	logger.Logger.Infof("playing song %s, duration %f, start %d", song.Name, duration, second)
+	slog.Info("playing song", "name", song.Name, "duration", duration, "start", second)
 	mp.FirePlaying()
 
 	go func() {

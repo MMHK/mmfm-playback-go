@@ -1,13 +1,26 @@
 package config
 
 import (
-	"mmfm-playback-go/tests"
 	"os"
 	"testing"
 )
 
+var allEnvKeys = []string{
+	"FFPLAY_PATH", "FFPROBE_PATH", "MPLAYER_PATH",
+	"WEBSOCKET_API", "WEB_API", "CACHE_PATH",
+	"WS_API", "WEB_API_URL", "CACHE_DIR",
+}
+
+func clearEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range allEnvKeys {
+		t.Setenv(k, "")
+	}
+}
+
 func TestNewConfigFromFile(t *testing.T) {
-	// Create a temporary config file
+	clearEnv(t)
+
 	tempConfig := `{
     "ffmpeg": {
         "ffplay": "/usr/bin/ffplay",
@@ -24,7 +37,7 @@ func TestNewConfigFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp config file:", err)
 	}
-	defer os.Remove(tempFile) // clean up
+	defer os.Remove(tempFile)
 
 	config, err := NewConfig(tempFile)
 	if err != nil {
@@ -41,12 +54,11 @@ func TestNewConfigFromFile(t *testing.T) {
 }
 
 func TestConfigFromEnvironment(t *testing.T) {
-	err := tests.LoadTestEnv()
-	if err != nil {
-		t.Fatal("Failed to load test env:", err)
-	}
+	clearEnv(t)
 
-	// Create a minimal config file
+	t.Setenv("FFPLAY_PATH", "/env/ffplay")
+	t.Setenv("WEBSOCKET_API", "ws://env-test")
+
 	tempConfig := `{
     "ffmpeg": {
         "ffplay": "/default/ffplay",
@@ -63,14 +75,13 @@ func TestConfigFromEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp config file:", err)
 	}
-	defer os.Remove(tempFile) // clean up
+	defer os.Remove(tempFile)
 
 	config, err := NewConfig(tempFile)
 	if err != nil {
 		t.Fatal("Failed to load config:", err)
 	}
 
-	// Environment variables should override file values
 	if config.FFMpegConf.FFPlay != "/env/ffplay" {
 		t.Errorf("Expected ffplay path to be overridden by env '/env/ffplay', got '%s'", config.FFMpegConf.FFPlay)
 	}
@@ -81,7 +92,8 @@ func TestConfigFromEnvironment(t *testing.T) {
 }
 
 func TestConfigValidation(t *testing.T) {
-	// Test with missing required fields
+	clearEnv(t)
+
 	tempConfig := `{
     "ffmpeg": {
         "ffplay": "",
@@ -97,7 +109,7 @@ func TestConfigValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp config file:", err)
 	}
-	defer os.Remove(tempFile) // clean up
+	defer os.Remove(tempFile)
 
 	_, err = NewConfig(tempFile)
 	if err == nil {

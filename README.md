@@ -107,7 +107,7 @@ docker run -d --env-file .env mmfm-playback-go
         "ffprobe": "...",
         "mplayer": "..."
     },
-    "ws": "ws://localhost:8888/io/?EIO=3&transport=websocket",
+    "ws": "http://localhost:8888",
     "cache": "...",
     "web": "http://localhost:8888/song/get"
 }

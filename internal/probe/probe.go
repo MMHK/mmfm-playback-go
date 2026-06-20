@@ -2,7 +2,7 @@ package probe
 
 import (
 	"fmt"
-	"mmfm-playback-go/internal/logger"
+	"log/slog"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -25,7 +25,7 @@ func (f *FFprobe) GetMediaInfo(url string) (*MediaInfo, error) {
 	cmd := exec.Command(f.bin, "-v", "quiet", "-show_format", "-show_streams", url)
 	output, err := cmd.Output()
 	if err != nil {
-		logger.Logger.Error(err)
+		slog.Error("get media info failed", "url", url, "error", err)
 		return nil, err
 	}
 

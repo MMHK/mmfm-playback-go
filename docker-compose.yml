@@ -11,7 +11,7 @@ services:
       - FFPLAY_PATH=/usr/bin/ffplay
       - FFPROBE_PATH=/usr/bin/ffprobe
       - MPLAYER_PATH=/usr/bin/mplayer
-      - WEBSOCKET_API=ws://host.docker.internal:8888/io/?EIO=3&transport=websocket
+      - WEBSOCKET_API=http://host.docker.internal:8888
       - WEB_API=http://host.docker.internal:8888/song/get
       - CACHE_PATH=/home/appuser/cache
     # For Linux hosts, replace host.docker.internal with your host IP

@@ -4,7 +4,7 @@
         "ffprobe": "F:/grean/ffmpeg/bin/ffprobe.exe",
         "mplayer": "F:/grean/mplayer/mplayer.exe"
     },
-    "ws": "ws://192.168.33.6:8888/io/?EIO=3\u0026transport=websocket",
+    "ws": "http://192.168.33.6:8888",
     "web": "http://192.168.33.6:8888/song/get",
     "cache": "F:\\TestProject\\golang\\mmfm-playback-go\\temp"
 }

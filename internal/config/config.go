@@ -96,17 +96,6 @@ func (c *PlaybackConfig) loadFromEnv() {
 	if cachePath := os.Getenv("CACHE_PATH"); cachePath != "" {
 		c.CachePath = cachePath
 	}
-
-	// Support for legacy environment variable names as well
-	if ws := os.Getenv("WS_API"); ws != "" {
-		c.WebSocketAPI = ws
-	}
-	if web := os.Getenv("WEB_API_URL"); web != "" {
-		c.WebAPI = web
-	}
-	if cache := os.Getenv("CACHE_DIR"); cache != "" {
-		c.CachePath = cache
-	}
 }
 
 // validate checks if required configuration fields are present

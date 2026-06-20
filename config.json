@@ -4,7 +4,7 @@
         "ffprobe": "${FFPROBE_BIN}",
         "mplayer": "${MPLAYER_BIN}"
     },
-    "ws": "ws://${MMFM_HOST}/io/?EIO=3\u0026transport=websocket",
+    "ws": "http://${MMFM_HOST}",
     "cache": "/tmp/music",
     "web": "http://${MMFM_HOST}/song/get",
     "scheduled_audios": [
